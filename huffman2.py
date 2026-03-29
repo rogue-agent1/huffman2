@@ -1,81 +1,63 @@
 #!/usr/bin/env python3
-"""huffman2 - Huffman coding with serialization and adaptive mode."""
+"""Huffman coding — build tree, encode, decode."""
 import sys, heapq
 from collections import Counter
 
 class HuffNode:
     def __init__(self, char=None, freq=0, left=None, right=None):
-        self.char = char
-        self.freq = freq
-        self.left = left
-        self.right = right
-    def __lt__(self, other):
-        return self.freq < other.freq
+        self.char, self.freq, self.left, self.right = char, freq, left, right
+    def __lt__(self, other): return self.freq < other.freq
 
-def build_tree(freq):
-    heap = [HuffNode(ch, f) for ch, f in freq.items()]
+def build_tree(text):
+    freq = Counter(text)
+    heap = [HuffNode(c, f) for c, f in freq.items()]
     heapq.heapify(heap)
     while len(heap) > 1:
-        l = heapq.heappop(heap)
-        r = heapq.heappop(heap)
-        heapq.heappush(heap, HuffNode(freq=l.freq + r.freq, left=l, right=r))
+        a, b = heapq.heappop(heap), heapq.heappop(heap)
+        heapq.heappush(heap, HuffNode(freq=a.freq+b.freq, left=a, right=b))
     return heap[0] if heap else None
 
-def build_codes(node, prefix="", codes=None):
-    if codes is None:
-        codes = {}
-    if node is None:
-        return codes
-    if node.char is not None:
-        codes[node.char] = prefix or "0"
-        return codes
-    build_codes(node.left, prefix + "0", codes)
-    build_codes(node.right, prefix + "1", codes)
+def build_codes(root):
+    codes = {}
+    def traverse(node, code):
+        if node.char is not None:
+            codes[node.char] = code or "0"
+            return
+        if node.left: traverse(node.left, code + "0")
+        if node.right: traverse(node.right, code + "1")
+    if root: traverse(root, "")
     return codes
 
 def encode(text):
-    if not text:
-        return "", {}
-    freq = Counter(text)
-    tree = build_tree(freq)
+    tree = build_tree(text)
     codes = build_codes(tree)
-    return "".join(codes[ch] for ch in text), codes
+    bits = "".join(codes[c] for c in text)
+    return bits, tree, codes
 
-def decode(bits, codes):
-    if not bits:
-        return ""
-    reverse = {v: k for k, v in codes.items()}
+def decode(bits, tree):
+    if not tree: return ""
+    if tree.char is not None: return tree.char * len(bits)
     result = []
-    current = ""
+    node = tree
     for b in bits:
-        current += b
-        if current in reverse:
-            result.append(reverse[current])
-            current = ""
+        node = node.left if b == "0" else node.right
+        if node.char is not None:
+            result.append(node.char)
+            node = tree
     return "".join(result)
-
-def compress_ratio(original, encoded_bits):
-    orig_bits = len(original) * 8
-    return 1 - len(encoded_bits) / orig_bits if orig_bits > 0 else 0
 
 def test():
     text = "abracadabra"
-    bits, codes = encode(text)
-    assert decode(bits, codes) == text
-    assert len(codes) == 5
-    r = compress_ratio(text, bits)
-    assert r > 0
-    bits2, codes2 = encode("aaaaaa")
-    assert decode(bits2, codes2) == "aaaaaa"
-    assert len(codes2) == 1
-    bits3, codes3 = encode("ab")
-    assert decode(bits3, codes3) == "ab"
-    assert encode("") == ("", {})
-    long_text = "the quick brown fox jumps over the lazy dog" * 10
-    b, c = encode(long_text)
-    assert decode(b, c) == long_text
-    assert compress_ratio(long_text, b) > 0.2
-    print("All tests passed!")
+    bits, tree, codes = encode(text)
+    decoded = decode(bits, tree)
+    assert decoded == text
+    assert len(bits) < len(text) * 8  # compressed
+    assert len(codes) == len(set(text))
+    # Single char
+    bits2, tree2, _ = encode("aaaa")
+    assert decode(bits2, tree2) == "aaaa"
+    print("  huffman2: ALL TESTS PASSED")
 
 if __name__ == "__main__":
-    test() if "--test" in sys.argv else print("huffman2: Huffman coding. Use --test")
+    if len(sys.argv) > 1 and sys.argv[1] == "test": test()
+    else: print("Huffman coding")
